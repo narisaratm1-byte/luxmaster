@@ -1,116 +1,753 @@
-/**
- * LUX MASTER - Cloud Sync Backend (Adapted for Numeric Records)
- * Spreadsheet ID: 1ajTfnOne8JFVCEarIkWmDsW9Q3NGvb-aEUwmBA9oEyA
- */
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUX MASTER - Standard 2561 Pro Max</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Kanit', sans-serif; background-color: #FDFCF8; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #000; border-radius: 10px; }
+        
+        .brutal-card {
+            background: white;
+            border: 4px solid black;
+            box-shadow: 10px 10px 0px #000;
+            border-radius: 2.5rem;
+        }
 
-const SPREADSHEET_ID = '1ajTfnOne8JFVCEarIkWmDsW9Q3NGvb-aEUwmBA9oEyA';
-const SHEET_NAME = "Sheet1";
+        .formula-card.active {
+            background-color: #FBBF24;
+            border-color: #000;
+            transform: translateY(-4px);
+            box-shadow: 8px 8px 0px #000;
+        }
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('index')
-    .setTitle('LUX MASTER PRO')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
+        .status-badge {
+            display: inline-block;
+            padding: 8px 24px;
+            border-radius: 99px;
+            font-weight: 900;
+            border: 4px solid black;
+            text-transform: uppercase;
+        }
+        .status-pass { background-color: #10B981; color: white; }
+        .status-fail { background-color: #EF4444; color: white; }
 
-/**
- * ฟังก์ชันหลักในการบันทึกข้อมูล
- * บันทึกทั้งข้อมูลพื้นฐานและตัวเลขที่ใช้ในการคำนวณตามลำดับ m, n, r, p, t, q, L, W
- */
-function processForm(data) {
-  const lock = LockService.getScriptLock();
-  try {
-    // รอคิว 10 วินาทีเพื่อป้องกันการเขียนทับกัน
-    lock.waitLock(10000);
-    
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    let sheet = ss.getSheetByName(SHEET_NAME);
-    if (!sheet) {
-      sheet = ss.getSheets()[0]; // ถ้าไม่เจอชื่อ Sheet1 ให้ใช้แผ่นงานแรก
-    }
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
 
-    const timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
-    const status = (data.status || 'FAIL').toUpperCase();
+        .image-preview-box {
+            width: 100%;
+            height: 150px;
+            border: 4px dashed #ccc;
+            border-radius: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: #f9f9f9;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .image-preview-box:hover { border-color: #000; background: #fff; }
+        .image-preview-box img { width: 100%; height: 100%; object-fit: cover; }
 
-    /**
-     * การเรียงลำดับ rowData (A-V)
-     * บันทึกค่าที่คำนวณและตัวแปรแยกตามคอลัมน์ที่กำหนดไว้ (เริ่ม M=m, N=n...)
-     */
-    const rowData = [
-      timestamp,                    // A: วันที่/เวลา
-      data.location || "",          // B: สถานที่
-      data.floor || "",             // C: ชั้น
-      data.room || "",              // D: ห้อง
-      Number(data.standard) || 0,   // E: มาตรฐาน Lux
-      data.type_label || "",        // F: ลักษณะงาน
-      data.bulb || "",              // G: สถานะหลอด
-      data.formula_id || "",        // H: รหัสสูตร (เช่น F1, F2...)
-      Number(data.lux) || 0,        // I: Avg Lux (ผลลัพธ์ที่คำนวณได้)
-      Number(data.max) || 0,        // J: Max
-      Number(data.min) || 0,        // K: Min
-      status,                       // L: สถานะ (PASS/FAIL)
-      
-      // --- ส่วนข้อมูลตัวแปรที่ใช้กดคำนวณ (เริ่ม Col M ตามลำดับที่คุณต้องการ) ---
-      data.map_M || "",             // M: m
-      data.map_N || "",             // N: n
-      data.map_R || "",             // O: r
-      data.map_P || "",             // P: p (เลขจุดวัดต่างๆ ที่กดคำนวณ)
-      data.map_T || "",             // Q: t
-      data.map_Q || "",             // R: q
-      data.map_L || "",             // S: L
-      data.map_W || "",             // T: W
-      
-      data.formula_name || "สูตร 7", // U: ชื่อสูตรหรือเลขที่แสดงการคำนวณ
-      data.image || ""              // V: Image Base64
-    ];
+        .hanging-light {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            margin-left: 15px;
+        }
+        .bulb-cord {
+            position: absolute;
+            top: -40px;
+            width: 2px;
+            height: 30px;
+            background: black;
+        }
+        .glowing-bulb-icon {
+            color: #FBBF24;
+            filter: drop-shadow(0 0 15px rgba(251, 191, 36, 1));
+            animation: light-pulse 2s infinite ease-in-out;
+            font-size: 2.5rem;
+        }
+        @keyframes light-pulse {
+            0%, 100% { opacity: 0.8; transform: scale(1); filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.5)); }
+            50% { opacity: 1; transform: scale(1.1); filter: drop-shadow(0 0 20px rgba(251, 191, 36, 1)); }
+        }
+    </style>
+</head>
+<body class="text-slate-900 overflow-hidden">
 
-    // บันทึกแถวข้อมูลลงในชีท
-    sheet.appendRow(rowData);
-    
-    // ตรวจสอบการระบายสีสถานะ (คอลัมน์ L คือลำดับที่ 12)
-    const lastRow = sheet.getLastRow();
-    const statusCell = sheet.getRange(lastRow, 12);
-    if (status === "PASS") {
-      statusCell.setFontColor("#10B981").setFontWeight("bold");
-    } else {
-      statusCell.setFontColor("#EF4444").setFontWeight("bold");
-    }
-    
-    return { 
-      success: true, 
-      message: "บันทึกข้อมูลและตัวเลขคำนวณลงชีทสำเร็จ (เริ่มจาก M=m, N=n)" 
-    };
+    <!-- Loading Overlay -->
+    <div id="loading-spinner" class="modal-overlay">
+        <div class="flex flex-col items-center text-white">
+            <div class="w-16 h-16 border-8 border-slate-600 border-t-yellow-400 rounded-full animate-spin mb-4"></div>
+            <p class="font-black italic uppercase tracking-wider text-center">กำลังเชื่อมต่อและบันทึกข้อมูลไปยัง<br>GOOGLE SHEETS...</p>
+        </div>
+    </div>
 
-  } catch (error) {
-    console.error('Error:', error.toString());
-    return { success: false, message: "เกิดข้อผิดพลาด: " + error.toString() };
-  } finally {
-    lock.releaseLock();
-  }
-}
+    <!-- Confirm Delete Modal (Local) -->
+    <div id="delete-confirm-overlay" class="modal-overlay">
+        <div class="w-full max-w-md bg-white border-8 border-black rounded-[2.5rem] p-10 text-center shadow-[15px_15px_0px_#000]">
+            <i class="fa-solid fa-triangle-exclamation text-rose-500 text-5xl mb-6"></i>
+            <h2 class="text-3xl font-black italic uppercase mb-2">ยืนยันการลบ?</h2>
+            <p class="font-bold text-slate-500 mb-10">ข้อมูลจะถูกลบออกจากเครื่องของคุณเท่านั้น (ไม่ลบใน Sheet)</p>
+            <div class="flex gap-4">
+                <button onclick="closeDeleteModal()" class="flex-1 border-4 border-black py-4 rounded-2xl font-black hover:bg-slate-50">ยกเลิก</button>
+                <button id="confirm-delete-btn" class="flex-1 bg-rose-500 text-white border-4 border-black py-4 rounded-2xl font-black shadow-[4px_4px_0px_#000]">ลบข้อมูล</button>
+            </div>
+        </div>
+    </div>
 
-/**
- * ฟังก์ชันดึงประวัติการบันทึกมาแสดงผล
- */
-function getRecords() {
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheets()[0];
-    const lastRow = sheet.getLastRow();
-    
-    if (lastRow <= 1) return [];
-    
-    const values = sheet.getDataRange().getValues();
-    return values.slice(1).map((row) => ({
-      time: row[0] ? row[0].toString() : "",
-      location: row[1] || "",
-      room: row[3] || "",
-      lux: row[8] || 0,
-      status: row[11] || "",
-      image: row[21] || "" 
-    })).reverse();
-    
-  } catch (e) {
-    return [];
-  }
-}
+    <div class="flex h-screen">
+        <!-- Sidebar Navigation -->
+        <nav class="hidden lg:flex w-80 bg-white border-r-8 border-black flex-col p-10 z-50">
+            <div class="flex items-center gap-5 mb-20">
+                <div class="w-16 h-16 bg-black rounded-[1.5rem] shadow-[6px_6px_0px_#FBBF24] flex items-center justify-center text-white font-black italic text-4xl">L</div>
+                <h2 class="font-black italic text-3xl tracking-tighter leading-none text-slate-900 uppercase">LUX MASTER</h2>
+            </div>
+            <div class="space-y-6 flex-1">
+                <button onclick="switchTab('dashboard')" class="nav-btn w-full flex items-center gap-6 p-6 rounded-[2.5rem] border-4 border-black bg-black text-white shadow-[8px_8px_0px_#FBBF24] font-black" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line text-xl"></i> <span>DASHBOARD</span>
+                </button>
+                <button onclick="switchTab('new')" class="nav-btn w-full flex items-center gap-6 p-6 rounded-[2.5rem] border-4 border-transparent text-slate-400 font-black hover:text-black hover:translate-x-2 transition-all" data-tab="new">
+                    <i class="fa-solid fa-plus-circle text-xl"></i> <span>NEW MEASURE</span>
+                </button>
+                <button onclick="switchTab('history')" class="nav-btn w-full flex items-center gap-6 p-6 rounded-[2.5rem] border-4 border-transparent text-slate-400 font-black hover:text-black hover:translate-x-2 transition-all" data-tab="history">
+                    <i class="fa-solid fa-clock-rotate-left text-xl"></i> <span>LOGBOOK</span>
+                </button>
+            </div>
+            <div class="mt-auto p-6 bg-slate-100 rounded-3xl border-4 border-black">
+                <p class="text-[10px] font-black uppercase opacity-40">Current Date (TH)</p>
+                <p id="nav-date" class="font-black text-sm uppercase">--/--/----</p>
+                <div class="flex items-center gap-2 mt-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <p class="text-[8px] font-bold text-green-700 uppercase">Cloud Sync Ready</p>
+                </div>
+            </div>
+        </nav>
+
+        <main class="flex-1 overflow-y-auto p-6 md:p-12 lg:p-20 pb-40 custom-scrollbar">
+            
+            <!-- Dashboard View -->
+            <div id="view-dashboard" class="tab-view space-y-12">
+                <header class="flex items-center">
+                    <div>
+                        <h1 class="text-6xl font-black tracking-tighter text-slate-900 uppercase italic leading-none inline-block">DASHBOARD</h1>
+                        <div class="hanging-light">
+                            <div class="bulb-cord"></div>
+                            <i class="fa-solid fa-lightbulb glowing-bulb-icon"></i>
+                        </div>
+                        <p class="font-black text-slate-400 uppercase tracking-widest text-xs mt-2">คำนวณสถิติจากประวัติการวัดทั้งหมด</p>
+                    </div>
+                </header>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-emerald-300 border-4 border-black p-8 rounded-[2.5rem] shadow-[6px_6px_0px_#000]">
+                        <p class="text-[10px] font-black uppercase opacity-60 mb-2">Avg. Lux Overall</p>
+                        <h2 class="text-5xl font-black italic"><span id="stat-avg">0</span></h2>
+                    </div>
+                    <div class="bg-white border-4 border-black p-8 rounded-[2.5rem] shadow-[6px_6px_0px_#000]">
+                        <p class="text-[10px] font-black uppercase opacity-60 mb-2 italic">Calculated Max</p>
+                        <h2 class="text-5xl font-black text-blue-600 italic"><span id="stat-max">0</span></h2>
+                    </div>
+                    <div class="bg-white border-4 border-black p-8 rounded-[2.5rem] shadow-[6px_6px_0px_#000]">
+                        <p class="text-[10px] font-black uppercase opacity-60 mb-2 italic">Calculated Min</p>
+                        <h2 class="text-5xl font-black text-rose-600 italic"><span id="stat-min">0</span></h2>
+                    </div>
+                    <div class="bg-amber-300 border-4 border-black p-8 rounded-[2.5rem] shadow-[6px_6px_0px_#000]">
+                        <p class="text-[10px] font-black uppercase opacity-60 mb-2">Total Logs</p>
+                        <h2 class="text-5xl font-black italic"><span id="stat-count">0</span></h2>
+                    </div>
+                </div>
+                <div class="space-y-6">
+                    <h4 class="text-xl font-black italic uppercase tracking-tighter">Recent Measurements</h4>
+                    <div id="recent-logs-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+                </div>
+            </div>
+
+            <!-- New Measure View -->
+            <div id="view-new" class="tab-view hidden space-y-10">
+                <header><h1 class="text-4xl font-black italic uppercase tracking-tighter">NEW MEASUREMENT</h1></header>
+                <form id="measurement-form" onsubmit="handleFormSubmit(this, event)">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                        <div class="lg:col-span-5 space-y-8">
+                            <div class="brutal-card p-8">
+                                <h4 class="font-black uppercase italic mb-6 text-slate-400">Section 1: พื้นที่และเกณฑ์มาตรฐาน</h4>
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="text-[10px] font-black uppercase text-slate-600 ml-2 italic">Area Photo</label>
+                                        <div class="image-preview-box mt-2" onclick="document.getElementById('photo-input').click()">
+                                            <div id="photo-placeholder" class="text-center text-slate-400">
+                                                <i class="fa-solid fa-camera text-3xl mb-2"></i>
+                                                <p class="text-[10px] font-black uppercase">Click to upload</p>
+                                            </div>
+                                            <img id="photo-preview" src="" class="hidden">
+                                        </div>
+                                        <input type="file" id="photo-input" accept="image/*" class="hidden" onchange="previewImage(this)">
+                                        <input type="hidden" name="area_photo" id="hidden-photo-base64">
+                                    </div>
+                                    <div class="grid grid-cols-1 gap-4">
+                                        <div>
+                                            <label class="text-[10px] font-black uppercase text-slate-600 ml-2 italic">Location</label>
+                                            <select name="location" id="location-select" class="w-full p-4 border-4 border-black rounded-2xl font-bold bg-white" onchange="handleLocationChange(this.value)" required>
+                                                <option value="">-- เลือกสถานที่ --</option>
+                                                <option value="GDC">GDC</option>
+                                                <option value="MW">MW</option>
+                                                <option value="RSP">RSP</option>
+                                                <option value="RPL">RPL</option>
+                                                <option value="TALC">TALC</option>
+                                                <option value="ILP">ILP</option>
+                                                <option value="NDC">NDC</option>
+                                                <option value="LAB">LAB</option>
+                                                <option value="CANTEEN">CANTEEN</option>
+                                                <option value="Warehouse">Warehouse</option>
+                                                <option value="อื่นๆ">อื่นๆ</option>
+                                            </select>
+                                            <div id="other-location-container" class="hidden mt-3">
+                                                <label class="text-[10px] font-black uppercase text-indigo-600 ml-2 italic">โปรดระบุสถานที่</label>
+                                                <input id="location-other" type="text" class="w-full p-4 border-4 border-indigo-500 rounded-2xl font-bold bg-indigo-50" placeholder="เช่น ห้องประชุมชั้น 3...">
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-[10px] font-black uppercase text-slate-600 ml-2 italic">Floor / Zone</label>
+                                                <input name="floor" type="text" class="w-full p-4 border-4 border-black rounded-2xl font-bold" placeholder="ชั้น/โซน" required>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] font-black uppercase text-slate-600 ml-2 italic">Room / Area Name</label>
+                                                <input name="room" type="text" class="w-full p-4 border-4 border-black rounded-2xl font-bold" placeholder="ชื่อพื้นที่" required>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="mb-4">
+                                            <label class="text-[11px] font-black uppercase text-slate-600 ml-2 mb-1 block italic">ลักษณะงาน (กฎหมาย 2561)</label>
+                                            <select id="legal-standard" name="legal_standard" class="w-full p-4 border-4 border-black rounded-2xl font-bold bg-white text-sm" onchange="updateSelectedLabel(this)" required>
+                                                <option value="">-- เลือกประเภทความละเอียดของงาน --</option>
+                                                <optgroup label="1. บริเวณพื้นที่สัญจรและพื้นที่ส่วนกลาง">
+                                                    <option value="50">50 Lux: ลานจอดรถ ทางเดินและบันไดภายนอกอาคาร, ห้องผักผ่อน</option>
+                                                    <option value="100">100 Lux: ทางเดิน, บันได, ป้อมยาม,ทางเข้าห้องโถง (ภายในอาคาร)</option>
+                                                    <option value="100">100 Lux: ลิฟต์, ห้องน้ำ, ห้องอาบน้ำ, ห้องเปลี่ยนเสื้อผ้า, ห้องเก็บของ</option>
+                                                    <option value="200">200 Lux: คลังสินค้า, ห้องเก็บวัตถุดิบ, จุดขนถ่ายสินค้า (ทั่วไป)</option>
+                                                    <option value="200">200 Lux: ห้องควบคุม, ลานบรรจุสินค้า</option>
+                                                    <option value="300">300 Lux: โรงอาหาร, ห้องเตรียมอาหาร</option>
+                                                    <option value="300">300 Lux: ห้องตรวจรักษา, บริเวณซ่อมบำรุง,พื้นที่บรรจุ</option>
+                                                    <option value="300">300 Lux: ห้องประชุม, ห้องอบรม, ห้องบรรยาย, สำนักงาน</option>
+                                                    <option value="300">300 Lux: โกดังเก็บของไว้เพื่อเคลื่อนย้าย, ห้องเก็บเอกสาร</option>
+                                                </optgroup>
+                                                <optgroup label="2. บริเวณพื้นที่ปฏิบัติงาน / สายการผลิต">
+                                                    <option value="300">300 Lux: บริเวณเตรียมการผลิต,กระบวนการผลิต,เทแป้ง</option>
+                                                    <option value="400">400 Lux: งานหยาบ (เชื่อมเหล็ก, หลอมโลหะ)</option>
+                                                    <option value="800">800 Lux: งานละเอียด (พ่นสี, ตกแต่งผิว)</option>
+                                                    <option value="1200">1200 Lux: งานละเอียด (ประกอบชิ้นส่วนเล็ก, ตัดเย็บ)</option>
+                                                    <option value="1200">1200 Lux: งานละเอียดมาก (Micro-inspection, ชิ้นส่วนไฟฟ้าเล็ก, เย็บผ้าสีเข้ม)</option>
+                                                    <option value="2400">2400 Lux: งานละเอียดมากพิเศษ (เจียระไน, ผ่าตัด)</option>
+                                                </optgroup>
+                                            </select>
+                                            <input type="hidden" name="type_label" id="hidden-type-label">
+                                        </div>
+                                        <label class="text-[10px] font-black uppercase text-slate-400 ml-2">สถานะหลอดไฟ</label>
+                                        <select id="field-bulb-status" name="bulb_status" class="w-full p-4 border-4 border-black rounded-2xl font-bold bg-white" onchange="toggleOtherBulb(this.value)">
+                                            <option value="ปกติ">ปกติ</option>
+                                            <option value="ชำรุด">ชำรุด</option>
+                                            <option value="ไฟกระพริบ">ไฟกระพริบ</option>
+                                            <option value="มีสิ่งของบัง">มีสิ่งของบัง</option>
+                                            <option value="อื่นๆ">อื่นๆ (ระบุ)</option>
+                                        </select>
+                                        <div id="other-bulb-container" class="hidden mt-2">
+                                            <input id="bulb-status-other" name="bulb_other" type="text" class="w-full p-4 border-4 border-black rounded-2xl font-bold" placeholder="ระบุสาเหตุ...">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 2 -->
+                        <div class="lg:col-span-7 space-y-8">
+                            <div class="brutal-card p-8">
+                                <h4 class="font-black uppercase italic text-slate-400 text-sm mb-6">Section 2: การวัดตามมาตรฐาน</h4>
+                                <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-8">
+                                    <button type="button" onclick="selectFormula('f1')" id="btn-f1" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร1</button>
+                                    <button type="button" onclick="selectFormula('f2')" id="btn-f2" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร2</button>
+                                    <button type="button" onclick="selectFormula('f3')" id="btn-f3" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร3</button>
+                                    <button type="button" onclick="selectFormula('f4')" id="btn-f4" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร4</button>
+                                    <button type="button" onclick="selectFormula('f5')" id="btn-f5" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร5</button>
+                                    <button type="button" onclick="selectFormula('f6')" id="btn-f6" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร6</button>
+                                    <button type="button" onclick="selectFormula('f7')" id="btn-f7" class="formula-card p-2 border-2 border-black rounded-xl text-xs font-black">สูตร7</button>
+                                    <input type="hidden" name="formula_id" id="formula-select" value="">
+                                </div>
+                                <div id="selected-formula-box" class="hidden mb-6 p-4 border-4 border-black border-dashed rounded-3xl bg-slate-50">
+                                    <div class="flex flex-col gap-1">
+                                        <p id="formula-name-text" class="text-xs font-black italic uppercase text-slate-400 leading-none">NAME</p>
+                                        <p id="formula-math-text" class="text-sm font-normal text-black"></p>
+                                    </div>
+                                </div>
+                                <div id="calculator-inputs" class="space-y-6 min-h-[150px]">
+                                    <div class="py-12 text-center opacity-20 font-black italic uppercase">โปรดเลือกสูตรการวัดเพื่อกรอกค่า</div>
+                                </div>
+                                <div id="result-footer" class="hidden mt-10 p-8 bg-slate-50 border-4 border-black border-dashed rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6">
+                                    <div class="flex flex-col">
+                                        <p class="text-[10px] font-black uppercase text-slate-400 italic">Average Lux</p>
+                                        <span id="final-lux" class="text-6xl font-black italic">0</span> 
+                                        <div class="flex gap-4 mt-2">
+                                            <span class="text-[10px] font-black text-blue-600 uppercase italic">Max: <span id="local-max">0</span></span>
+                                            <span class="text-[10px] font-black text-rose-600 uppercase italic">Min: <span id="local-min">0</span></span>
+                                        </div>
+                                        <input type="hidden" name="avg_lux" id="hidden-avg">
+                                        <input type="hidden" name="max_val" id="hidden-max">
+                                        <input type="hidden" name="min_val" id="hidden-min">
+                                    </div>
+                                    <button type="submit" class="w-full md:w-auto bg-black text-white px-12 py-5 rounded-2xl font-black text-xl hover:bg-slate-800 transition-all shadow-[8px_8px_0px_#FBBF24]">บันทึกข้อมูล</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- History View -->
+            <div id="view-history" class="tab-view hidden space-y-8">
+                <header class="flex justify-between items-end">
+                    <h1 class="text-5xl font-black italic uppercase tracking-tighter">LOGBOOK</h1> 
+                </header>
+                <div class="brutal-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-black text-white text-[10px] font-black uppercase italic tracking-widest">
+                                <tr>
+                                    <th class="p-6">Date / Time</th>
+                                    <th class="p-6">Location</th>
+                                    <th class="p-6">Area</th>
+                                    <th class="p-6 text-right">Avg (LX)</th>
+                                    <th class="p-6 text-right">Max/Min</th>
+                                    <th class="p-6 text-center">Result</th>
+                                    <th class="p-6 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body" class="text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="success-overlay" class="modal-overlay">
+        <div class="w-full max-w-2xl bg-white border-8 border-black rounded-[3.5rem] p-10 md:p-14 text-center shadow-[20px_20px_0px_#000]">
+            <h1 class="text-4xl font-black italic mb-2 uppercase tracking-tighter">CLOUD SYNCED!</h1>
+            <div id="res-status-container" class="my-6">
+                <span id="res-status-badge" class="status-badge">STATUS</span>
+            </div>
+            
+            <div class="bg-slate-50 border-4 border-black border-dashed rounded-[2.5rem] p-8 text-left space-y-4 mb-10 font-black uppercase text-sm italic">
+                <div class="grid grid-cols-2 gap-4 border-b-2 border-slate-200 pb-4">
+                    <div><p class="text-[9px] font-black text-slate-400 uppercase">Site / Location</p><p id="sum-location" class="font-black text-sm">-</p></div>
+                    <div><p class="text-[9px] font-black text-slate-400 uppercase">Room / Floor</p><p id="sum-room" class="font-black text-sm truncate">-</p></div>
+                    <div><p class="text-[9px] font-black text-slate-400 uppercase">Bulb Status</p><p id="sum-status" class="font-black text-sm">-</p></div>
+                    <div><p class="text-[9px] font-black text-slate-400 uppercase">Timestamp</p><p id="sum-time" class="font-black text-[10px]">-</p></div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-white border-2 border-black p-3 rounded-2xl">
+                        <p class="text-[8px] font-black text-slate-400 uppercase">Average</p>
+                        <p id="sum-lux" class="font-black text-xl text-emerald-600">-</p>
+                    </div>
+                    <div class="bg-white border-2 border-black p-3 rounded-2xl">
+                        <p class="text-[8px] font-black text-slate-400 uppercase">Maximum</p>
+                        <p id="sum-max" class="font-black text-xl text-slate-900">-</p>
+                    </div>
+                    <div class="bg-white border-2 border-black p-3 rounded-2xl">
+                        <p class="text-[8px] font-black text-slate-400 uppercase">Minimum</p>
+                        <p id="sum-min" class="font-black text-xl text-slate-900">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="switchTab('dashboard')" class="flex-1 bg-black text-white py-5 rounded-2xl font-black text-xl shadow-[8px_8px_0px_#FBBF24]">HOME</button>
+                <button onclick="switchTab('new')" class="flex-1 border-4 border-black py-5 rounded-2xl font-black text-xl hover:bg-slate-50">NEW ENTRY</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let records = JSON.parse(localStorage.getItem('lux_records_master_v3_max') || '[]');
+        let currentPhoto = null;
+        let deleteIdx = -1;
+
+        // ตัวแปรเก็บค่า Map (ส่งไปยังคอลัมน์ M-T) ตามชื่อที่ backend ต้องการ
+        let currentMapData = {
+            map_M: "", map_N: "", map_R: "", map_P: "", map_T: "", map_Q: "", map_L: "", map_W: ""
+        };
+
+        const formulaMeta = {
+            f1: { name: "แหล่งกำเนิดแสงห่างเท่ากัน ตั้งแต่ 2 แถวขึ้นไป", math: "Avg = [R*(N-1)*(M-1) + Q*(N-1) + T*(M-1) + P] / (N*M)", pts: {R:8, Q:4, T:4, P:2}, params: ['N','M'] },
+            f2: { name: "แหล่งกำเนิดแสง 1 ดวง กึ่งกลางห้อง", math: "Avg = P (Value of P)", pts: {P:4}, params: [] },
+            f3: { name: "แหล่งกำเนิดแสง แถวเดียว กึ่งกลางห้อง", math: "Avg = [Q*(N-1) + P] / N", pts: {Q:8, P:2}, params: ['N'] },
+            f4: { name: "แหล่งกำเนิดแสง ต่อเนื่อง ตั้งแต่ 2 แถวขึ้นไป", math: "Avg = [R*N*(M-1) + Q*N + T*(M-1) + P] / [M*(N+1)]", pts: {R:4, Q:2, T:4, P:2}, params: ['N','M'] },
+            f5: { name: "แหล่งกำเนิดแสง กระจายทั่วเพดาน", math: "Avg = [R*(L-8)*(W-8) + 8*Q*(L-8) + 8*T*(W-8) + 64*P] / (W*L)", pts: {R:4, Q:2, T:2, P:2}, params: ['L','W'] },
+            f6: { name: "แหล่งกำเนิดแสง ต่อต่อเนื่อง แถวเดียว", math: "Avg = [Q*N + P] / (N+1)", pts: {Q:6, P:2}, params: ['N'] },
+            f7: { name: "ระบุจำนวนจุดวัดเอง (Manual)", math: "Avg = ผลรวมทุกจุด / จำนวนจุดทั้งหมด", pts: {}, params: ['Total'] }
+        };
+
+        function handleLocationChange(val) {
+            const otherContainer = document.getElementById('other-location-container');
+            if (val === "อื่นๆ") {
+                otherContainer.classList.remove('hidden');
+            } else {
+                otherContainer.classList.add('hidden');
+            }
+        }
+
+        function updateSelectedLabel(select) {
+            const label = select.options[select.selectedIndex].text;
+            document.getElementById('hidden-type-label').value = label;
+        }
+
+        function getThaiTime() {
+            const now = new Date();
+            return now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+        }
+
+        function updateClock() {
+            const timeStr = getThaiTime();
+            if(document.getElementById('nav-date')) document.getElementById('nav-date').innerText = timeStr;
+        }
+        setInterval(updateClock, 1000);
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-view').forEach(v => v.classList.add('hidden'));
+            const view = document.getElementById(`view-${tabId}`);
+            if (view) view.classList.remove('hidden');
+            document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-black', 'text-white', 'shadow-[8px_8px_0px_#FBBF24]', 'border-black');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            const activeBtn = document.querySelector(`.nav-btn[data-tab="${tabId}"]`);
+            if (activeBtn) activeBtn.classList.add('bg-black', 'text-white', 'shadow-[8px_8px_0px_#FBBF24]', 'border-black');
+
+            if (tabId === 'dashboard') updateDashboard();
+            if (tabId === 'history') updateHistory();
+        }
+
+        function toggleOtherBulb(val) {
+            document.getElementById('other-bulb-container').style.display = (val === 'อื่นๆ') ? 'block' : 'none';
+        }
+
+        function previewImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    document.getElementById('photo-preview').src = e.target.result;
+                    document.getElementById('photo-preview').classList.remove('hidden');
+                    document.getElementById('photo-placeholder').classList.add('hidden');
+                    currentPhoto = e.target.result;
+                    document.getElementById('hidden-photo-base64').value = e.target.result;
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function selectFormula(fid) {
+            document.getElementById('formula-select').value = fid;
+            document.querySelectorAll('.formula-card').forEach(c => c.classList.remove('active'));
+            document.getElementById(`btn-${fid}`).classList.add('active');
+            
+            const infoBox = document.getElementById('selected-formula-box');
+            document.getElementById('formula-name-text').innerText = `[${fid.toUpperCase()}] ${formulaMeta[fid].name}`;
+            document.getElementById('formula-math-text').innerText = formulaMeta[fid].math;
+            infoBox.classList.remove('hidden');
+            renderInputs(fid);
+        }
+
+        function renderInputs(fid) {
+            const container = document.getElementById('calculator-inputs');
+            document.getElementById('result-footer').classList.remove('hidden');
+            const meta = formulaMeta[fid];
+            let html = '';
+
+            if (fid === 'f7') {
+                html += `<div class="mb-6"><label class="text-[9px] font-black uppercase text-slate-400 ml-2 italic">ระบุจำนวนจุดตรวจวัดทั้งหมด</label>
+                         <input type="number" id="f7-count" class="w-full p-4 border-4 border-black rounded-2xl font-black bg-white" placeholder="เช่น 10" min="1" oninput="renderF7Points(this.value)"></div>
+                         <div id="f7-grid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2"></div>`;
+            } else {
+                if (meta.params.length > 0) {
+                    html += `<div class="grid grid-cols-2 gap-4 mb-6">`;
+                    meta.params.forEach(p => {
+                        html += `<div><label class="text-[9px] font-black uppercase text-slate-400 ml-2 italic">ตัวแปร ${p}</label><input type="number" data-param="${p}" class="calc-input w-full p-4 border-4 border-black rounded-2xl font-black bg-white" value="2" min="1"></div>`;
+                    });
+                    html += `</div>`;
+                }
+                ['R','Q','T','P'].forEach(key => {
+                    if (meta.pts[key]) {
+                        html += `<div class="mb-6"><p class="text-[9px] font-black uppercase text-slate-300 italic mb-2">ชุดจุดวัด ${key}</p><div class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">`;
+                        for(let i=1; i<=meta.pts[key]; i++) {
+                            html += `<input type="number" data-pt="${key}${i}" class="calc-input w-full p-2 border-2 border-black rounded-xl text-center font-bold text-xs" placeholder="0" min="0">`;
+                        }
+                        html += `</div></div>`;
+                    }
+                });
+            }
+            container.innerHTML = html;
+            document.querySelectorAll('.calc-input').forEach(i => i.addEventListener('input', runCalc));
+        }
+
+        function renderF7Points(val) {
+            const count = parseInt(val) || 0;
+            const grid = document.getElementById('f7-grid');
+            let html = '';
+            for(let i=1; i<=count; i++) html += `<input type="number" data-pt="P${i}" class="calc-input w-full p-2 border-2 border-black rounded-xl text-center font-bold text-xs" placeholder="P${i}" min="0">`;
+            grid.innerHTML = html;
+            document.querySelectorAll('.calc-input').forEach(i => i.addEventListener('input', runCalc));
+        }
+
+        function runCalc() {
+            const fid = document.getElementById('formula-select').value;
+            let allRawValues = [];
+            document.querySelectorAll('[data-pt]').forEach(i => {
+                const val = parseFloat(i.value);
+                if (!isNaN(val)) allRawValues.push(val);
+            });
+            const max = allRawValues.length ? Math.max(...allRawValues) : 0;
+            const min = allRawValues.length ? Math.min(...allRawValues) : 0;
+            document.getElementById('local-max').innerText = max;
+            document.getElementById('local-min').innerText = min;
+            document.getElementById('hidden-max').value = max;
+            document.getElementById('hidden-min').value = min;
+
+            const getGroupValues = k => {
+                let vals = [];
+                document.querySelectorAll(`[data-pt^="${k}"]`).forEach(i => { if(i.value) vals.push(i.value); });
+                return vals.join(',');
+            };
+            
+            const getAvg = k => {
+                let s=0, c=0;
+                document.querySelectorAll(`[data-pt^="${k}"]`).forEach(i => { s += parseFloat(i.value)||0; c++; });
+                return c ? s/c : 0;
+            };
+
+            const getVal = q => parseFloat(document.querySelector(q)?.value) || 0;
+            const R=getAvg('R'), Q=getAvg('Q'), T=getAvg('T'), P=getAvg('P');
+            const N=getVal('[data-param="N"]'), M=getVal('[data-param="M"]'), L=getVal('[data-param="L"]'), W=getVal('[data-param="W"]');
+
+            // เก็บค่าเข้า Map สำหรับส่ง GS ให้ตรงกับชื่อตัวแปร backend (map_N, map_M, ...)
+            currentMapData = {
+                map_M: M || "", 
+                map_N: N || "", 
+                map_R: getGroupValues('R'), 
+                map_P: getGroupValues('P'), 
+                map_T: getGroupValues('T'), 
+                map_Q: getGroupValues('Q'),
+                map_L: L || "", 
+                map_W: W || ""
+            };
+
+            let res = 0;
+            switch(fid) {
+                case 'f1': res = (R*(N-1)*(M-1) + Q*(N-1) + T*(M-1) + P) / (N*M); break;
+                case 'f2': res = P; break;
+                case 'f3': res = (Q*(N-1) + P) / N; break;
+                case 'f4': res = (R*N*(M-1) + Q*N + T*(M-1) + P) / (M*(N+1)); break;
+                case 'f5': res = (R*(L-8)*(W-8) + 8*Q*(L-8) + 8*T*(W-8) + 64*P) / (W*L); break;
+                case 'f6': res = (Q*N + P) / (N+1); break;
+                case 'f7': 
+                    let s=0, c=0;
+                    document.querySelectorAll('#f7-grid [data-pt]').forEach(i => { s += parseFloat(i.value)||0; c++; });
+                    res = c ? s/c : 0;
+                    break;
+            }
+            const final = isFinite(res) ? Math.round(res) : 0;
+            document.getElementById('final-lux').innerText = final;
+            document.getElementById('hidden-avg').value = final;
+        }
+
+        function handleFormSubmit(form, e) {
+            e.preventDefault();
+            document.getElementById('loading-spinner').style.display = 'flex';
+            
+            const fd = new FormData(form);
+            const data = Object.fromEntries(fd.entries());
+            
+            let finalLocation = data.location;
+            if (finalLocation === "อื่นๆ") {
+                finalLocation = document.getElementById('location-other').value || "อื่นๆ (ไม่ระบุ)";
+            }
+
+            const luxValue = parseFloat(data.avg_lux || 0);
+            const targetValue = parseFloat(data.legal_standard || 0);
+            const isPass = luxValue >= targetValue;
+
+            // รวมข้อมูลทั้งหมดเพื่อส่งไปยัง Backend
+            const record = {
+                ...data,
+                location: finalLocation,
+                lux: luxValue,
+                max: parseFloat(data.max_val || 0),
+                min: parseFloat(data.min_val || 0),
+                standard: targetValue,
+                status: isPass ? 'PASS' : 'FAIL',
+                time: getThaiTime(),
+                bulb: data.bulb_status === 'อื่นๆ' ? data.bulb_other : data.bulb_status,
+                image: currentPhoto,
+                formula_name: formulaMeta[data.formula_id]?.name || "สูตรที่ระบุ",
+                // ข้อมูลแมปเข้าคอลัมน์ M-T
+                ...currentMapData
+            };
+
+            if (typeof google !== 'undefined' && google.script && google.script.run) {
+                google.script.run
+                    .withSuccessHandler((response) => {
+                        saveLocalAndShowSuccess(record, form);
+                    })
+                    .withFailureHandler((err) => {
+                        document.getElementById('loading-spinner').style.display = 'none';
+                        alert("Error: " + err);
+                    })
+                    .processForm(record);
+            } else {
+                // จำลองการบันทึกถ้าไม่ได้รันบน Google Apps Script
+                setTimeout(() => saveLocalAndShowSuccess(record, form), 1000);
+            }
+        }
+
+        function saveLocalAndShowSuccess(record, form) {
+            records.unshift(record);
+            localStorage.setItem('lux_records_master_v3_max', JSON.stringify(records));
+            
+            document.getElementById('loading-spinner').style.display = 'none';
+            document.getElementById('sum-location').innerText = record.location;
+            document.getElementById('sum-room').innerText = record.room;
+            document.getElementById('sum-status').innerText = record.bulb;
+            document.getElementById('sum-time').innerText = record.time;
+            document.getElementById('sum-lux').innerText = record.lux;
+            document.getElementById('sum-max').innerText = record.max;
+            document.getElementById('sum-min').innerText = record.min;
+            
+            const badge = document.getElementById('res-status-badge');
+            badge.innerText = record.status;
+            badge.className = `status-badge ${record.status === 'PASS' ? 'status-pass' : 'status-fail'}`;
+            
+            document.getElementById('success-overlay').style.display = 'flex';
+            form.reset();
+            document.getElementById('photo-preview').classList.add('hidden');
+            document.getElementById('photo-placeholder').classList.remove('hidden');
+            document.getElementById('other-location-container').classList.add('hidden');
+            currentPhoto = null;
+        }
+
+        function updateDashboard() {
+            if(!records.length) {
+                document.getElementById('stat-avg').innerText = "0";
+                document.getElementById('stat-max').innerText = "0";
+                document.getElementById('stat-min').innerText = "0";
+                document.getElementById('stat-count').innerText = "0";
+                document.getElementById('recent-logs-list').innerHTML = `<div class="col-span-2 py-10 text-center opacity-20 font-black italic uppercase tracking-widest">ยังไม่มีประวัติการวัด</div>`;
+                return;
+            }
+
+            const luxs = records.map(r => r.lux || 0);
+            const maxs = records.map(r => r.max || 0);
+            const mins = records.map(r => r.min || 0);
+
+            const avgVal = Math.round(luxs.reduce((a,b)=>a+b,0)/luxs.length);
+            const overallMax = Math.max(...maxs);
+            const overallMin = Math.min(...mins);
+
+            document.getElementById('stat-avg').innerText = avgVal;
+            document.getElementById('stat-max').innerText = overallMax;
+            document.getElementById('stat-min').innerText = overallMin;
+            document.getElementById('stat-count').innerText = records.length;
+            
+            document.getElementById('recent-logs-list').innerHTML = records.slice(0, 4).map(r => `
+                <div class="brutal-card p-6 flex items-center gap-6 bg-white">
+                    <div class="w-16 h-16 rounded-2xl border-4 border-black overflow-hidden flex-shrink-0 bg-slate-100">
+                        ${r.image ? `<img src="${r.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-slate-300 text-[8px] font-black">NO IMG</div>`}
+                    </div>
+                    <div class="flex-1 overflow-hidden">
+                        <p class="text-[9px] font-black opacity-30 uppercase">${r.time}</p>
+                        <h5 class="font-black uppercase italic truncate">${r.room}</h5>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-2xl font-black italic">${r.lux}</span>
+                        <div class="text-[8px] font-black uppercase ${r.status==='PASS'?'text-emerald-500':'text-rose-500'}">${r.status}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateHistory() {
+            const tbody = document.getElementById('history-table-body');
+            if(!records.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-20 text-center font-black italic opacity-20 uppercase tracking-widest">ไม่มีข้อมูลในประวัติการวัด</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = records.map((r, idx) => `
+                <tr class="border-b-4 border-black/5 hover:bg-yellow-50 transition-colors">
+                    <td class="p-6 text-[10px] text-slate-400 font-bold">${r.time}</td>
+                    <td class="p-6">
+                        <div class="flex items-center gap-3">
+                            ${r.image ? `<img src="${r.image}" class="w-8 h-8 rounded border border-black object-cover">` : '<div class="w-8 h-8 rounded border-2 border-slate-200 bg-slate-50 flex items-center justify-center text-[6px]">X</div>'}
+                            <div><p class="font-black uppercase">${r.location}</p></div>
+                        </div>
+                    </td>
+                    <td class="p-6 font-black uppercase text-slate-700">${r.room}<br><span class="text-[9px] text-slate-300 italic">Floor ${r.floor}</span></td>
+                    <td class="p-6 text-right font-black italic text-2xl">${r.lux}</td>
+                    <td class="p-6 text-right font-bold text-slate-400 text-xs">${r.max} / ${r.min}</td>
+                    <td class="p-6 text-center">
+                        <span class="px-4 py-1.5 rounded-full text-[10px] font-black border-2 border-black ${r.status==='PASS'?'bg-emerald-300':'bg-rose-400'}">${r.status}</span>
+                    </td>
+                    <td class="p-6 text-center">
+                        <button onclick="askDelete(${idx})" class="w-10 h-10 border-4 border-black rounded-xl hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center mx-auto">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function askDelete(idx) {
+            deleteIdx = idx;
+            document.getElementById('delete-confirm-overlay').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-confirm-overlay').style.display = 'none';
+            deleteIdx = -1;
+        }
+
+        document.getElementById('confirm-delete-btn').onclick = () => {
+            if (deleteIdx > -1) {
+                records.splice(deleteIdx, 1);
+                localStorage.setItem('lux_records_master_v3_max', JSON.stringify(records));
+                updateHistory();
+                updateDashboard();
+                closeDeleteModal();
+            }
+        };
+
+        window.onload = () => {
+            updateDashboard();
+            updateClock();
+        };
+    </script>
+</body>
+</html>
