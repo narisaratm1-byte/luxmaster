@@ -1,0 +1,579 @@
+﻿<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lux Master Pro - ระบบคำนวณค่าแสงสว่างมาตรฐาน</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Kanit', sans-serif; background-color: #F8F9FA; }
+        .lux-input:focus { border-color: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1); outline: none; }
+        .formula-card.active { border-color: #f59e0b; background-color: #fffbeb; }
+        .point-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        .no-print { @media print { display: none; } }
+        .tip-card { transition: transform 0.2s; }
+        .tip-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="text-slate-900">
+
+    <div id="app" class="min-h-screen flex flex-col lg:flex-row">
+        <!-- Sidebar -->
+        <aside class="no-print hidden lg:flex w-72 bg-white border-r border-slate-200 flex-col sticky top-0 h-screen p-6 shadow-sm z-30">
+            <div class="flex items-center gap-3 mb-10">
+                <div class="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200">
+                    <i data-lucide="sun" class="text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black text-slate-800 leading-none">LUX MASTER</h1>
+                    <span class="text-[10px] font-bold text-amber-600 tracking-widest uppercase">Safety Professional</span>
+                </div>
+            </div>
+
+            <nav class="space-y-2 flex-1">
+                <button onclick="showTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-4 px-5 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all">
+                    <i data-lucide="layout-dashboard"></i> แดชบอร์ด
+                </button>
+                <button onclick="showTab('new')" id="nav-new" class="nav-btn w-full flex items-center gap-4 px-5 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all">
+                    <i data-lucide="plus-square"></i> เพิ่มการตรวจวัด
+                </button>
+                <button onclick="showTab('history')" id="nav-history" class="nav-btn w-full flex items-center gap-4 px-5 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all">
+                    <i data-lucide="database"></i> ประวัติและ Export
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-4 md:p-10 pb-28 lg:pb-10 overflow-x-hidden">
+            
+            <!-- Dashboard -->
+            <section id="tab-dashboard" class="tab-content space-y-6">
+                <div class="flex justify-between items-end">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800">แดชบอร์ด</h2>
+                        <p class="text-slate-500 font-medium">ภาพรวมและการปฏิบัติตามกฎหมาย พ.ศ. 2568</p>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-amber-500 p-6 rounded-3xl text-white shadow-lg">
+                        <p class="text-amber-100 text-xs font-bold uppercase tracking-widest">ค่าเฉลี่ยทั้งหมด (ทุกบันทึก)</p>
+                        <h3 class="text-4xl font-black mt-1" id="stat-avg">0</h3>
+                        <p class="text-[10px] font-bold opacity-70">LUX (Mean)</p>
+                    </div>
+                    <div class="bg-emerald-500 p-6 rounded-3xl text-white shadow-lg">
+                        <p class="text-emerald-100 text-xs font-bold uppercase tracking-widest">จุดที่สว่างที่สุด (Max)</p>
+                        <h3 class="text-4xl font-black mt-1" id="stat-max">0</h3>
+                        <p class="text-[10px] font-bold opacity-70">LUX (สูงสุดที่เคยพบ)</p>
+                    </div>
+                    <div class="bg-rose-500 p-6 rounded-3xl text-white shadow-lg">
+                        <p class="text-rose-100 text-xs font-bold uppercase tracking-widest">จุดที่มืดที่สุด (Min)</p>
+                        <h3 class="text-4xl font-black mt-1" id="stat-min">0</h3>
+                        <p class="text-[10px] font-bold opacity-70">LUX (ต่ำสุดที่เคยพบ)</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <!-- Legal Standard 2568 -->
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                        <div class="flex items-center gap-2 mb-4">
+                            <i data-lucide="scale" class="text-blue-500"></i>
+                            <h3 class="text-lg font-black text-slate-800">เกณฑ์มาตรฐานกฎหมาย (พ.ศ. 2568)</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center p-3 bg-blue-50 rounded-xl">
+                                <span class="text-sm font-bold text-slate-700">ทางเดิน / บันได / ห้องน้ำ</span>
+                                <span class="px-3 py-1 bg-blue-500 text-white rounded-lg text-xs font-black">100 LX</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                                <span class="text-sm font-bold text-slate-700">งานทั่วไป / คลังสินค้า / พักผ่อน</span>
+                                <span class="px-3 py-1 bg-slate-400 text-white rounded-lg text-xs font-black">200 LX</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 bg-emerald-50 rounded-xl">
+                                <span class="text-sm font-bold text-slate-700">งานสำนักงาน / ห้องเรียน / ห้องประชุม</span>
+                                <span class="px-3 py-1 bg-emerald-500 text-white rounded-lg text-xs font-black">300 LX</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 bg-amber-50 rounded-xl">
+                                <span class="text-sm font-bold text-slate-700">งานเขียนแบบ / ตรวจสอบความละเอียดสูง</span>
+                                <span class="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-black">500 LX</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 bg-rose-50 rounded-xl">
+                                <span class="text-sm font-bold text-slate-700">งานเจียระไน / งานประณีตพิเศษ</span>
+                                <span class="px-3 py-1 bg-rose-500 text-white rounded-lg text-xs font-black">1,000 LX</span>
+                            </div>
+                        </div>
+                        <p class="mt-4 text-[10px] text-slate-400 font-bold">* อ้างอิงตามประกาศกรมสวัสดิการและคุ้มครองแรงงาน เรื่อง มาตรฐานความเข้มแสงสว่าง พ.ศ. 2568</p>
+                    </div>
+
+                    <!-- Safety Tips -->
+                    <div class="bg-slate-900 p-6 rounded-3xl text-white shadow-sm overflow-hidden relative">
+                        <div class="flex items-center gap-2 mb-4 relative z-10">
+                            <i data-lucide="shield-check" class="text-amber-400"></i>
+                            <h3 class="text-lg font-black">Safety Tips: การจัดการแสงสว่าง</h3>
+                        </div>
+                        <div class="space-y-4 relative z-10">
+                            <div class="tip-card bg-white/10 p-3 rounded-2xl flex gap-3">
+                                <div class="w-8 h-8 shrink-0 bg-amber-400/20 rounded-lg flex items-center justify-center text-amber-400">1</div>
+                                <p class="text-xs leading-relaxed opacity-90">ตรวจสอบหลอดไฟที่เสื่อมสภาพ (แสงหรี่) หรือกระพริบเป็นประจำ เพราะอาจทำให้เกิดอาการล้าของสายตา (Eye Strain)</p>
+                            </div>
+                            <div class="tip-card bg-white/10 p-3 rounded-2xl flex gap-3">
+                                <div class="w-8 h-8 shrink-0 bg-amber-400/20 rounded-lg flex items-center justify-center text-amber-400">2</div>
+                                <p class="text-xs leading-relaxed opacity-90">ทำความสะอาดฝาครอบโคมไฟ (Diffuser) ทุก 3-6 เดือน ฝุ่นที่เกาะอาจทำให้ความสว่างลดลงถึง 20-30%</p>
+                            </div>
+                            <div class="tip-card bg-white/10 p-3 rounded-2xl flex gap-3">
+                                <div class="w-8 h-8 shrink-0 bg-amber-400/20 rounded-lg flex items-center justify-center text-amber-400">3</div>
+                                <p class="text-xs leading-relaxed opacity-90">จัดวางตำแหน่งโต๊ะทำงานไม่ให้แสงแดดส่องเข้าตาโดยตรง หรือเกิดเงาสะท้อนบนหน้าจอ (Glare)</p>
+                            </div>
+                        </div>
+                        <i data-lucide="zap" class="absolute -bottom-4 -right-4 w-32 h-32 text-white/5 rotate-12"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                    <h3 class="text-lg font-black text-slate-800 mb-4">5 บันทึกล่าสุด</h3>
+                    <div id="dashboard-recent-list" class="space-y-2 text-sm font-bold"></div>
+                </div>
+            </section>
+
+            <!-- New Measurement -->
+            <section id="tab-new" class="tab-content hidden space-y-6">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-3xl font-black text-slate-800">เพิ่มการตรวจวัดใหม่</h2>
+                </div>
+
+                <div class="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
+                    <!-- Location Data -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">สถานที่</label>
+                            <select id="f-loc" class="w-full p-3 rounded-xl bg-slate-50 border-2 border-slate-50 font-bold lux-input appearance-none">
+                                <option value="GDC">GDC</option>
+                                <option value="MW">MW</option>
+                                <option value="RSP">RSP</option>
+                                <option value="RPL">RPL</option>
+                                <option value="TALCAM">TALCAM</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">ชั้น</label>
+                            <input type="text" id="f-floor" placeholder="เช่น ชั้น 2" class="w-full p-3 rounded-xl bg-slate-50 border-2 border-slate-50 font-bold lux-input">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">ลักษณะงาน</label>
+                            <input type="text" id="f-work" placeholder="เช่น สำนักงาน" class="w-full p-3 rounded-xl bg-slate-50 border-2 border-slate-50 font-bold lux-input">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">สภาพหลอดไฟ</label>
+                            <select id="f-condition" onchange="toggleOtherCondition(this.value)" class="w-full p-3 rounded-xl bg-slate-50 border-2 border-slate-50 font-bold lux-input appearance-none">
+                                <option value="ปกติ">ปกติ</option>
+                                <option value="ชำรุด">ชำรุด</option>
+                                <option value="ไฟหรี่">ไฟหรี่</option>
+                                <option value="ไม่ได้ทำความสะอาด">ไม่ได้ทำความสะอาด</option>
+                                <option value="มีสิ่งของบัง">มีสิ่งของบัง</option>
+                                <option value="อื่นๆ">อื่นๆ (ระบุ...)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="other-condition-group" class="hidden">
+                        <label class="text-[10px] font-black text-slate-400 uppercase block mb-1">ระบุลักษณะอื่น ๆ</label>
+                        <input type="text" id="f-condition-other" placeholder="โปรดระบุรายละเอียด" class="w-full p-3 rounded-xl bg-slate-50 border-2 border-slate-50 font-bold lux-input">
+                    </div>
+
+                    <!-- Formula Selection -->
+                    <div>
+                        <h3 class="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                            <i data-lucide="settings" size="20" class="text-amber-500"></i> เลือกสูตรที่ต้องการ
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                            <button onclick="selectFormula(1)" id="formula-1" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 1: >2 แถว</button>
+                            <button onclick="selectFormula(2)" id="formula-2" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 2: 1 ดวงกลาง</button>
+                            <button onclick="selectFormula(3)" id="formula-3" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 3: 1 แถวกลาง</button>
+                            <button onclick="selectFormula(4)" id="formula-4" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 4: ต่อเนื่อง ≥2 แถว</button>
+                            <button onclick="selectFormula(5)" id="formula-5" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 5: กระจายทั่ว</button>
+                            <button onclick="selectFormula(6)" id="formula-6" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 6: ต่อเนื่อง 1 แถว</button>
+                            <button onclick="selectFormula(7)" id="formula-7" class="formula-card p-3 rounded-xl border-2 border-slate-50 text-left transition-all text-[10px] font-bold">สูตร 7: พื้นที่ทั่วไป</button>
+                        </div>
+                        <p id="formula-desc" class="text-[11px] text-slate-500 font-bold mt-2 bg-slate-50 p-2 rounded-lg"></p>
+                    </div>
+
+                    <!-- Parameters -->
+                    <div id="param-section" class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-6 rounded-3xl">
+                        <div id="group-M">
+                            <label class="text-[10px] font-black text-slate-400 mb-1 block">M (จำนวนแถว)</label>
+                            <input type="number" id="val-M" value="3" oninput="runCalc()" class="w-full p-3 rounded-xl border-2 border-white font-black text-center text-xl lux-input">
+                        </div>
+                        <div id="group-N">
+                            <label class="text-[10px] font-black text-slate-400 mb-1 block">N (จำนวนหลอดไฟ)</label>
+                            <input type="number" id="val-N" value="3" oninput="runCalc()" class="w-full p-3 rounded-xl border-2 border-white font-black text-center text-xl lux-input">
+                        </div>
+                        <div id="group-L" class="hidden">
+                            <label class="text-[10px] font-black text-slate-400 mb-1 block">L (ความยาวห้อง)</label>
+                            <input type="number" id="val-L" value="10" oninput="runCalc()" class="w-full p-3 rounded-xl border-2 border-white font-black text-center text-xl lux-input">
+                        </div>
+                        <div id="group-W" class="hidden">
+                            <label class="text-[10px] font-black text-slate-400 mb-1 block">W (ความกว้างห้อง)</label>
+                            <input type="number" id="val-W" value="10" oninput="runCalc()" class="w-full p-3 rounded-xl border-2 border-white font-black text-center text-xl lux-input">
+                        </div>
+                    </div>
+
+                    <!-- Measurement Points -->
+                    <div id="point-entry-container" class="space-y-6"></div>
+
+                    <!-- Photo Upload -->
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-black text-slate-800 flex items-center gap-2">
+                            <i data-lucide="camera" size="20" class="text-blue-500"></i> ภาพถ่ายหน้างาน
+                        </h3>
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <label class="w-full md:w-64 h-32 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-all">
+                                <i data-lucide="upload-cloud" class="text-slate-400 mb-2"></i>
+                                <span class="text-xs font-bold text-slate-400 uppercase">คลิกเพื่ออัปโหลด</span>
+                                <input type="file" accept="image/*" onchange="handleImage(this)" class="hidden">
+                            </label>
+                            <div id="img-preview-container" class="hidden h-32 w-32 rounded-2xl overflow-hidden border border-slate-100 shadow-sm relative">
+                                <img id="img-preview" class="w-full h-full object-cover">
+                                <button onclick="clearImage()" class="absolute top-1 right-1 bg-rose-500 text-white p-1 rounded-full shadow-lg">
+                                    <i data-lucide="x" size="14"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Result Card -->
+                    <div class="mt-10 p-6 md:p-10 bg-slate-900 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+                        <div>
+                            <p class="text-amber-400 text-xs font-black uppercase tracking-widest mb-1">ความเข้มแสงเฉลี่ย (Average)</p>
+                            <h2 class="text-5xl md:text-7xl font-black text-white" id="live-avg-display">0.00 <small class="text-2xl font-bold text-amber-500">LX</small></h2>
+                        </div>
+                        <button onclick="saveRecord()" class="w-full md:w-auto px-10 py-5 bg-amber-500 text-amber-950 font-black rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all text-lg">
+                            บันทึกข้อมูลและประวัติ
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- History -->
+            <section id="tab-history" class="tab-content hidden space-y-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <h2 class="text-3xl font-black text-slate-800">ประวัติการตรวจวัด</h2>
+                    <div class="flex gap-2">
+                        <button onclick="exportCSV()" class="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-emerald-200">
+                            <i data-lucide="file-spreadsheet" size="18"></i> Export Excel/CSV
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-4 mb-4">
+                    <div class="flex-1 relative">
+                        <i data-lucide="search" class="absolute left-3 top-3 text-slate-400" size="18"></i>
+                        <input type="text" id="history-filter" placeholder="ค้นหาสถานที่หรือชั้น..." 
+                            oninput="renderHistory()" class="w-full pl-10 p-3 rounded-xl border border-slate-200 font-bold outline-none">
+                    </div>
+                    <select id="filter-loc" onchange="renderHistory()" class="p-3 rounded-xl border border-slate-200 font-bold outline-none">
+                        <option value="">ทั้งหมดทุกสถานที่</option>
+                        <option value="GDC">GDC</option>
+                        <option value="MW">MW</option>
+                        <option value="RSP">RSP</option>
+                        <option value="RPL">RPL</option>
+                        <option value="TALCAM">TALCAM</option>
+                    </select>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+                    <table class="w-full text-left min-w-[800px]">
+                        <thead class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4">วัน/เวลา</th>
+                                <th class="px-6 py-4">รูปภาพ</th>
+                                <th class="px-6 py-4">สถานที่/ชั้น</th>
+                                <th class="px-6 py-4">สภาพหลอดไฟ</th>
+                                <th class="px-6 py-4">ค่าเฉลี่ย (Lux)</th>
+                                <th class="px-6 py-4">การจัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list" class="divide-y divide-slate-50 text-sm font-bold"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <!-- Mobile Nav -->
+        <nav class="lg:hidden fixed bottom-6 left-6 right-6 h-18 bg-slate-900 shadow-2xl rounded-3xl flex items-center justify-around px-6 z-50 py-3 no-print">
+            <button onclick="showTab('dashboard')" class="p-3 text-slate-500"><i data-lucide="layout-dashboard"></i></button>
+            <button onclick="showTab('new')" class="p-4 bg-amber-500 text-amber-950 rounded-2xl -mt-12 shadow-xl shadow-amber-400/50"><i data-lucide="plus" size="28"></i></button>
+            <button onclick="showTab('history')" class="p-3 text-slate-500"><i data-lucide="database"></i></button>
+        </nav>
+    </div>
+
+    <script>
+        let records = JSON.parse(localStorage.getItem('lux_records_v6') || '[]');
+        let currentFormulaId = 1;
+        let uploadedImageBase64 = null;
+
+        const formulaConfigs = {
+            1: { name: "1. ห่างเท่ากัน >2 แถว", R: 8, Q: 4, T: 4, P: 2, params: ['M', 'N'], desc: "[R(N-1)(M-1) + Q(N-1) + T(M-1) + P] / NM" },
+            2: { name: "2. 1 ดวงกลางห้อง", R: 0, Q: 0, T: 0, P: 4, params: [], desc: "หาค่าเฉลี่ยของจุดมุมห้อง 4 จุด (P1+P2+P3+P4)/4" },
+            3: { name: "3. 1 แถวกลางห้อง", R: 0, Q: 8, T: 0, P: 2, params: ['N'], desc: "[Q(N-1) + P] / N" },
+            4: { name: "4. ต่อเนื่อง ≥2 แถว", R: 4, Q: 2, T: 4, P: 2, params: ['M', 'N'], desc: "[RN(M-1) + QN + T(M-1) + P] / M(N+1)" },
+            5: { name: "5. กระจายทั่วเพดาน", R: 4, Q: 2, T: 2, P: 2, params: ['L', 'W'], desc: "[R(L-8)(W-8) + 8Q(L-8) + 8T(W-8) + 64P] / WL" },
+            6: { name: "6. ต่อเนื่อง 1 แถว", R: 0, Q: 6, T: 0, P: 2, params: ['N'], desc: "[QN + P] / (N+1)" },
+            7: { name: "7. พื้นที่ทั่วไป (เฉลี่ย)", R: 4, Q: 4, T: 4, P: 4, params: [], desc: "หาค่าเฉลี่ยเลขคณิตของทุกจุดที่มีการกรอกข้อมูล" }
+        };
+
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            if(tabId === 'history') renderHistory();
+            if(tabId === 'dashboard') renderDashboard();
+            lucide.createIcons();
+            window.scrollTo(0,0);
+        }
+
+        function toggleOtherCondition(val) {
+            const group = document.getElementById('other-condition-group');
+            group.classList[val === 'อื่นๆ' ? 'remove' : 'add']('hidden');
+        }
+
+        function handleImage(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    uploadedImageBase64 = e.target.result;
+                    document.getElementById('img-preview').src = uploadedImageBase64;
+                    document.getElementById('img-preview-container').classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function clearImage() {
+            uploadedImageBase64 = null;
+            document.getElementById('img-preview-container').classList.add('hidden');
+            document.querySelector('input[type="file"]').value = '';
+        }
+
+        function selectFormula(id) {
+            currentFormulaId = id;
+            const config = formulaConfigs[id];
+            document.querySelectorAll('.formula-card').forEach(c => c.classList.remove('active'));
+            document.getElementById(`formula-${id}`).classList.add('active');
+            document.getElementById('formula-desc').innerText = `สูตรที่ ${id}: ${config.desc}`;
+
+            ['M', 'N', 'L', 'W'].forEach(p => {
+                document.getElementById(`group-${p}`).classList[config.params.includes(p) ? 'remove' : 'add']('hidden');
+            });
+
+            const container = document.getElementById('point-entry-container');
+            container.innerHTML = '<h3 class="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><i data-lucide="edit-3" size="20" class="text-emerald-500"></i> บันทึกค่าตามจุดวัดจริง</h3>';
+            
+            ['R', 'Q', 'T', 'P'].forEach(key => {
+                const count = config[key];
+                if (count > 0) {
+                    const section = document.createElement('div');
+                    section.className = "space-y-3 mb-6";
+                    section.innerHTML = `
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">จุด ${key} (${count} จุด)</label>
+                        <div class="point-grid" id="grid-${key}"></div>
+                    `;
+                    container.appendChild(section);
+                    const grid = section.querySelector(`#grid-${key}`);
+                    for(let i=1; i<=count; i++) {
+                        grid.innerHTML += `<input type="number" step="0.1" value="0" class="point-input w-full p-2 bg-slate-50 border-2 border-slate-50 rounded-lg text-center font-bold text-sm focus:border-emerald-400 outline-none" data-pos="${key}" oninput="runCalc()">`;
+                    }
+                }
+            });
+            lucide.createIcons();
+            runCalc();
+        }
+
+        function getPointValues() {
+            const values = [];
+            document.querySelectorAll('.point-input').forEach(input => {
+                const val = parseFloat(input.value);
+                if (!isNaN(val)) values.push(val);
+            });
+            return values;
+        }
+
+        function getPointAverage(pos) {
+            const inputs = document.querySelectorAll(`.point-input[data-pos="${pos}"]`);
+            if (inputs.length === 0) return 0;
+            let sum = 0;
+            inputs.forEach(i => sum += parseFloat(i.value) || 0);
+            return sum / inputs.length;
+        }
+
+        function runCalc() {
+            const config = formulaConfigs[currentFormulaId];
+            const getParam = (id) => parseFloat(document.getElementById(id).value) || 1;
+            const M = Math.max(1, getParam('val-M'));
+            const N = Math.max(1, getParam('val-N'));
+            const L = Math.max(1, getParam('val-L'));
+            const W = Math.max(1, getParam('val-W'));
+            const R = getPointAverage('R');
+            const Q = getPointAverage('Q');
+            const T = getPointAverage('T');
+            const P = getPointAverage('P');
+
+            let avg = 0;
+            switch(currentFormulaId) {
+                case 1: avg = ((R*(N-1)*(M-1)) + (Q*(N-1)) + (T*(M-1)) + P) / (N * M); break;
+                case 2: avg = P; break;
+                case 3: avg = ((Q*(N-1)) + P) / N; break;
+                case 4: avg = ((R*N*(M-1)) + (Q*N) + (T*(M-1)) + P) / (M * (N + 1)); break;
+                case 5: avg = ((R*(L-8)*(W-8)) + (8*Q*(L-8)) + (8*T*(W-8)) + (64*P)) / (W * L); break;
+                case 6: avg = ((Q*N) + P) / (N + 1); break;
+                case 7: 
+                    let sum = 0, count = 0;
+                    document.querySelectorAll('.point-input').forEach(i => { let val = parseFloat(i.value) || 0; if(val > 0) { sum += val; count++; } });
+                    avg = count > 0 ? (sum / count) : 0;
+                    break;
+            }
+            const result = Math.max(0, avg).toFixed(2);
+            document.getElementById('live-avg-display').innerHTML = `${result} <small class="text-2xl font-bold text-amber-500">LX</small>`;
+            return result;
+        }
+
+        function saveRecord() {
+            const loc = document.getElementById('f-loc').value;
+            const cond = document.getElementById('f-condition').value;
+            const condFinal = cond === 'อื่นๆ' ? document.getElementById('f-condition-other').value : cond;
+            
+            const avg = runCalc();
+            const pointValues = getPointValues();
+            
+            // หา Max และ Min ของรายการปัจจุบัน
+            const recordMax = pointValues.length > 0 ? Math.max(...pointValues) : parseFloat(avg);
+            const recordMin = pointValues.length > 0 ? Math.min(...pointValues) : parseFloat(avg);
+
+            const now = new Date();
+            const rec = {
+                id: Date.now(),
+                loc: loc,
+                floor: document.getElementById('f-floor').value,
+                work: document.getElementById('f-work').value,
+                condition: condFinal,
+                avg: parseFloat(avg),
+                max: recordMax,
+                min: recordMin,
+                formula: formulaConfigs[currentFormulaId].name,
+                image: uploadedImageBase64,
+                date: now.toLocaleDateString('th-TH'),
+                time: now.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})
+            };
+            
+            records.unshift(rec);
+            localStorage.setItem('lux_records_v6', JSON.stringify(records));
+            alert("บันทึกประวัติสำเร็จแล้ว");
+            clearImage();
+            showTab('dashboard');
+        }
+
+        function renderDashboard() {
+            if(!records.length) {
+                ['stat-avg', 'stat-max', 'stat-min'].forEach(id => document.getElementById(id).innerText = '0');
+                document.getElementById('dashboard-recent-list').innerHTML = '<p class="text-slate-400">ยังไม่มีข้อมูล</p>';
+                return;
+            }
+            
+            // ตรรกะใหม่:
+            // ค่าเฉลี่ยทั้งหมด: คือค่าเฉลี่ยของ Avg ทุกล็อต
+            const allAvgs = records.map(r => r.avg);
+            const totalAvg = allAvgs.reduce((a,b)=>a+b, 0) / allAvgs.length;
+            
+            // ค่าสูงสุด (Max): คือค่า Max ที่สูงที่สุดจากทุกล็อตที่เคยบันทึก
+            const allMaxs = records.map(r => r.max || r.avg);
+            const absoluteMax = Math.max(...allMaxs);
+            
+            // ค่าต่ำสุด (Min): คือค่า Min ที่ต่ำที่สุดจากทุกล็อตที่เคยบันทึก
+            const allMins = records.map(r => r.min || r.avg);
+            const absoluteMin = Math.min(...allMins);
+
+            document.getElementById('stat-avg').innerText = totalAvg.toFixed(1);
+            document.getElementById('stat-max').innerText = absoluteMax.toFixed(1);
+            document.getElementById('stat-min').innerText = absoluteMin.toFixed(1);
+            
+            document.getElementById('dashboard-recent-list').innerHTML = records.slice(0, 5).map(r => `
+                <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-amber-200 transition-all">
+                    <div class="flex flex-col">
+                        <span>${r.loc} - ${r.floor}</span>
+                        <span class="text-[10px] text-slate-400">${r.date} ${r.time}</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-amber-600 font-black block leading-none">${r.avg} LX</span>
+                        <span class="text-[9px] text-slate-400 font-bold uppercase">H: ${r.max || '-'} | L: ${r.min || '-'}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderHistory() {
+            const filterText = document.getElementById('history-filter').value.toLowerCase();
+            const filterLoc = document.getElementById('filter-loc').value;
+            
+            const filtered = records.filter(r => {
+                const matchText = r.loc.toLowerCase().includes(filterText) || r.floor.toLowerCase().includes(filterText);
+                const matchLoc = filterLoc === '' || r.loc === filterLoc;
+                return matchText && matchLoc;
+            });
+
+            document.getElementById('history-list').innerHTML = filtered.map(r => `
+                <tr>
+                    <td class="px-6 py-4">${r.date}<br><span class="text-[10px] text-slate-400">${r.time}</span></td>
+                    <td class="px-6 py-4">
+                        ${r.image ? `<img src="${r.image}" class="w-10 h-10 rounded-lg object-cover shadow-sm border border-slate-100">` : '<div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300"><i data-lucide="image" size="14"></i></div>'}
+                    </td>
+                    <td class="px-6 py-4">${r.loc}<br><span class="text-xs text-slate-500">${r.floor} / ${r.work}</span></td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded-md bg-slate-100 text-[10px] uppercase font-bold">${r.condition}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-amber-600 text-lg block font-black">${r.avg}</span>
+                        <span class="text-[9px] text-slate-400 font-bold uppercase">MAX: ${r.max || '-'} | MIN: ${r.min || '-'}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <button onclick="deleteRecord(${r.id})" class="text-rose-400 hover:text-rose-600 transition-all"><i data-lucide="trash-2" size="18"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function deleteRecord(id) {
+            if(confirm('ต้องการลบข้อมูลนี้ใช่หรือไม่?')) {
+                records = records.filter(r => r.id !== id);
+                localStorage.setItem('lux_records_v6', JSON.stringify(records));
+                renderHistory();
+            }
+        }
+
+        function exportCSV() {
+            if(!records.length) { alert("ไม่มีข้อมูลให้ Export"); return; }
+            const headers = ["Date", "Time", "Location", "Floor", "Work", "Condition", "Avg Lux", "Max Lux", "Min Lux", "Formula"];
+            const rows = records.map(r => [r.date, r.time, r.loc, r.floor, r.work, r.condition, r.avg, r.max || r.avg, r.min || r.avg, r.formula]);
+            
+            let csvContent = "\uFEFF" + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Lux_Master_Report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        window.onload = () => {
+            selectFormula(1);
+            renderDashboard();
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>
